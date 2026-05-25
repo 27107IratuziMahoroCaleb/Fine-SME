@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_EMAIL: str = "admin@finesme.com"
     FIRST_SUPERUSER_PASSWORD: str = "admin123"
 
+    FRONTEND_URL: str = "http://localhost:5173"
+
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
