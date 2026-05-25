@@ -1,0 +1,70 @@
+ ---
+  FINE SME — SME Financial Sustainability Prediction System Using
+  Transaction Data
+
+  Thematic Area: FinTech / AI / Business Analytics / SME Risk &
+  Sustainability Intelligence
+  Context: Rwanda-focused academic prototype for innovation center
+  evaluation; targets Commercial Banks, MFIs, SACCOs, and SME support
+  programs.
+
+  The Problem
+
+  SMEs drive employment and growth but suffer from cash-flow instability
+   and poor access to credit. Lenders rely on periodic financial
+  statements that are often late, incomplete, or missing entirely.
+
+  Core Idea
+
+  Build an AI-driven system that ingests transaction data (sales
+  inflows, expenses, payment patterns, balances) and predicts:
+  - Short-term liquidity stress (30/60/90 days)
+  - Long-term financial sustainability (6–12 months)
+
+  The 14 System Modules
+
+  ┌─────┬────────────────────┬──────────────────────────────────────┐
+  │  #  │       Module       │            Core Function             │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 1   │ User Registration  │ Role-based access, MFA, audit trail  │
+  │     │ & Auth             │                                      │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 2   │ Dashboard          │ Personalized views, portfolio risk,  │
+  │     │                    │ alerts                               │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 3   │ Data Integration   │ Bank/mobile money/POS/accounting/RRA │
+  │     │                    │  ingestion                           │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 4   │ Feature            │ Cash-flow KPIs, volatility,          │
+  │     │ Engineering        │ seasonality, burn rate               │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 5   │ AI Risk Prediction │ ML models — liquidity &              │
+  │     │                    │ sustainability scores                │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 6   │ Early Warning &    │ Threshold-triggered alerts,          │
+  │     │ Alerts             │ escalation workflows                 │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 7   │ SME Health         │ Composite score: liquidity,          │
+  │     │ Scorecard          │ profitability, stability, growth     │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 8   │ Advisory           │ AI-generated coaching tips (cash     │
+  │     │ Recommendations    │ flow, expenses, financing)           │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 9   │ Credit Decision    │ Credit limit, pricing, loan          │
+  │     │ Support            │ structure for lenders                │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 10  │ Sector Analytics   │ Industry benchmarks, geographic      │
+  │     │                    │ mapping                              │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 11  │ Portfolio          │ Watch lists, stress testing,         │
+  │     │ Management         │ concentration analysis               │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 12  │ Reporting &        │ Custom reports, PDF/Excel export,    │
+  │     │ Analytics          │ exec summaries                       │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 13  │ User & Access      │ RBAC, institution-level permissions  │
+  │     │ Management         │                                      │
+  ├─────┼────────────────────┼──────────────────────────────────────┤
+  │ 14  │ Security & Audit   │ Encryption, anonymization, anomaly   │
+  │     │                    │ detection                            │
+  └─────┴────────────────────┴──────────────────────────────────────┘

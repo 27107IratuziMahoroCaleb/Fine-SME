@@ -1,0 +1,37 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.env
+backend/backend.log
+*.egg-info/
+.pytest_cache/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/frontend.log
+
+# ML
+ml/__pycache__/
+ml/**/__pycache__/
+ml/venv/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Claude internal
+.claude/
+
+# Logs
+*.log
