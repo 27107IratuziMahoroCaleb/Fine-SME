@@ -7,7 +7,7 @@ export default function AuthLayout({ children }) {
   const { lang, toggle: toggleLang } = useLang()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-700 to-primary-500 flex items-center justify-center p-4 relative">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-primary-900 to-gray-900 flex items-center justify-center p-4 relative">
       {/* Toggles */}
       <div className="absolute top-4 right-4 flex gap-2">
         <button
