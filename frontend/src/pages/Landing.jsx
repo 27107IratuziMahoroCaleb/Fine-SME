@@ -89,11 +89,11 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 font-sans transition-colors">
 
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-100 dark:border-gray-800">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      {/* Floating Nav */}
+      <div className="fixed top-4 left-0 right-0 z-50 flex justify-center px-4">
+        <nav className="w-full max-w-5xl bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg shadow-black/10 px-5 py-3 flex items-center justify-between">
           <LogoCompact markColor="#2563eb" fineColor={theme === 'dark' ? '#ffffff' : '#1e293b'} smeColor="#2563eb" size="md" />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={toggleLang}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
@@ -119,19 +119,19 @@ export default function Landing() {
             </Link>
             <Link
               to="/register"
-              className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg transition"
+              className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-xl transition shadow-sm"
             >
               Get started
             </Link>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-primary-900 to-gray-900 text-white">
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: 'radial-gradient(circle at 25% 40%, #3b82f6 0%, transparent 50%), radial-gradient(circle at 75% 70%, #6366f1 0%, transparent 50%)' }} />
-        <div className="relative max-w-6xl mx-auto px-6 py-24 md:py-36 text-center">
+        <div className="relative max-w-6xl mx-auto px-6 pt-36 pb-24 md:pt-48 md:pb-36 text-center">
           <span className="inline-block mb-4 px-3 py-1 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-semibold tracking-wide uppercase">
             Financial Intelligence for Rwanda's SMEs
           </span>
