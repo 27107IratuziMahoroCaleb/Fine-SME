@@ -16,18 +16,18 @@ export const ROLE_ROUTES = {
   admin: ['*'],  // admin sees everything
   lender: [
     '/dashboard', '/smes', '/predictions', '/alerts',
-    '/scorecard', '/credit', '/reports',
+    '/scorecard', '/credit', '/reports', '/profile',
   ],
   sme_advisor: [
     '/dashboard', '/smes', '/data', '/alerts',
-    '/scorecard', '/recommendations',
+    '/scorecard', '/recommendations', '/profile',
   ],
   risk_analyst: [
     '/dashboard', '/smes', '/predictions', '/alerts',
-    '/scorecard', '/sector', '/portfolio', '/reports',
+    '/scorecard', '/sector', '/portfolio', '/reports', '/profile',
   ],
   program_manager: [
-    '/dashboard', '/smes', '/portfolio', '/sector', '/reports', '/engagements',
+    '/dashboard', '/smes', '/portfolio', '/sector', '/reports', '/engagements', '/profile',
   ],
 }
 

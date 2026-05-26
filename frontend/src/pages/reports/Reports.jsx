@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import AppLayout from '../../components/layout/AppLayout'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
@@ -12,6 +12,14 @@ const REPORT_TYPES = [
   { value: 'early_warning', label: 'Early Warning Summary' },
   { value: 'sector',        label: 'Sector Analysis' },
   { value: 'executive',     label: 'Executive Summary' },
+  { value: 'intervention',  label: 'Intervention Tracker' },
+  { value: 'credit',        label: 'Credit Assessment Report' },
+]
+
+const FREQUENCIES = [
+  { value: 'daily',   label: 'Daily' },
+  { value: 'weekly',  label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
 ]
 
 const RISK_COLORS = {
@@ -215,12 +223,112 @@ function ExecutiveReport({ data }) {
   )
 }
 
+function InterventionReport({ data }) {
+  const items = data.items || []
+  const byCat = data.by_category || {}
+  const byStatus = data.by_status || {}
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard label="Total Recommendations" value={data.total} />
+        <StatCard label="Categories" value={Object.keys(byCat).length} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <SectionTitle>By Category</SectionTitle>
+          <div className="space-y-1">
+            {Object.entries(byCat).map(([cat, count]) => (
+              <div key={cat} className="flex items-center justify-between text-sm">
+                <span className="capitalize text-gray-700 dark:text-gray-300">{cat.replace('_', ' ')}</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <SectionTitle>By Status</SectionTitle>
+          <div className="space-y-1">
+            {Object.entries(byStatus).map(([status, count]) => (
+              <div key={status} className="flex items-center justify-between text-sm">
+                <span className="capitalize text-gray-700 dark:text-gray-300">{status.replace('_', ' ')}</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div>
+        <SectionTitle>Recommendations ({items.length})</SectionTitle>
+        <div className="max-h-64 overflow-y-auto space-y-2">
+          {items.map((r, i) => (
+            <div key={i} className="px-3 py-2.5 bg-gray-50 dark:bg-gray-700 rounded-lg flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-white">{r.title}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{r.sme_name} · {r.category?.replace('_', ' ')}</p>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 capitalize whitespace-nowrap">{r.status?.replace('_', ' ')}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 dark:text-gray-500">Generated {fmtDate(data.generated_at)}</p>
+    </div>
+  )
+}
+
+function CreditReport({ data }) {
+  const items = data.items || []
+  const dist = data.rating_distribution || {}
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard label="Total Assessments" value={data.total} />
+        <StatCard label="Avg Score" value={data.avg_score} />
+        <StatCard label="Ratings" value={Object.keys(dist).length} />
+      </div>
+      <div>
+        <SectionTitle>Rating Distribution</SectionTitle>
+        <div className="flex gap-2 flex-wrap">
+          {Object.entries(dist).map(([rating, count]) => (
+            <div key={rating} className="bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2 text-center">
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{count}</p>
+              <p className="text-xs text-gray-500">{rating}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <SectionTitle>Assessments ({items.length})</SectionTitle>
+        <table className="w-full">
+          <thead><tr className="border-b border-gray-100 dark:border-gray-700">
+            <Th>SME</Th><Th>Rating</Th><Th center>Score</Th><Th center>Limit (RWF)</Th><Th center>Rate %</Th>
+          </tr></thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+            {items.map((a, i) => (
+              <tr key={i}>
+                <Td bold>{a.sme_name}</Td>
+                <Td><span className="font-semibold text-primary-600">{a.rating}</span></Td>
+                <Td center>{a.score?.toFixed(1)}</Td>
+                <Td center>{a.credit_limit?.toLocaleString()}</Td>
+                <Td center>{a.interest_rate?.toFixed(1)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400 dark:text-gray-500">Generated {fmtDate(data.generated_at)}</p>
+    </div>
+  )
+}
+
 const RENDERERS = {
   portfolio:     PortfolioReport,
   sme_risk:      SMERiskReport,
   early_warning: EarlyWarningReport,
   sector:        SectorReport,
   executive:     ExecutiveReport,
+  intervention:  InterventionReport,
+  credit:        CreditReport,
 }
 
 function ReportView({ detail, expand }) {
@@ -255,7 +363,6 @@ function FineSMELogo() {
 function PrintDocument({ detail }) {
   const printDate = new Date()
   const printDateStr = printDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
-
   return (
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: '#111827', padding: '40px 48px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #2563eb', paddingBottom: 16, marginBottom: 28 }}>
@@ -267,9 +374,7 @@ function PrintDocument({ detail }) {
         </div>
       </div>
       <div style={{ marginBottom: 24 }}>
-        <p style={{ fontSize: 10, fontWeight: 600, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
-          Official Report
-        </p>
+        <p style={{ fontSize: 10, fontWeight: 600, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Official Report</p>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: 0 }}>{detail.title}</h1>
         <div style={{ width: 48, height: 3, backgroundColor: '#2563eb', borderRadius: 2, marginTop: 10 }} />
       </div>
@@ -277,26 +382,119 @@ function PrintDocument({ detail }) {
         <ReportView detail={detail} expand />
       </div>
       <div style={{ borderTop: '1px solid #d1d5db', paddingTop: 24, marginTop: 40 }}>
-        <p style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 20 }}>
-          Authorized Signatures
-        </p>
+        <p style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 20 }}>Authorized Signatures</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 32 }}>
           {['Prepared by', 'Reviewed by', 'Approved by'].map(label => (
             <div key={label}>
               <div style={{ borderBottom: '1px solid #374151', height: 36, marginBottom: 6 }} />
               <p style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>{label}</p>
               <p style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>Name &amp; Signature</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12 }}>
-                <p style={{ fontSize: 10, color: '#6b7280', whiteSpace: 'nowrap' }}>Date:</p>
-                <div style={{ borderBottom: '1px solid #9ca3af', flex: 1, height: 16 }} />
-              </div>
             </div>
           ))}
         </div>
       </div>
-      <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <p style={{ fontSize: 10, color: '#9ca3af' }}>FINE SME — Financial Sustainability Intelligence System · For authorized use only</p>
+      <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 20, display: 'flex', justifyContent: 'space-between' }}>
+        <p style={{ fontSize: 10, color: '#9ca3af' }}>FINE SME · For authorized use only</p>
         <p style={{ fontSize: 10, color: '#9ca3af' }}>Printed {printDate.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+      </div>
+    </div>
+  )
+}
+
+function SchedulesTab({ smes }) {
+  const { data: schedules, loading, refetch } = useApi(() => reportsApi.listSchedules())
+  const [type, setType] = useState('portfolio')
+  const [smeId, setSmeId] = useState('')
+  const [frequency, setFrequency] = useState('weekly')
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState('')
+
+  async function createSchedule() {
+    setCreating(true)
+    setError('')
+    try {
+      await reportsApi.createSchedule({ report_type: type, sme_id: smeId ? Number(smeId) : null, frequency })
+      refetch()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to create schedule.')
+    } finally {
+      setCreating(false) }
+  }
+
+  async function deleteSchedule(id) {
+    await reportsApi.deleteSchedule(id)
+    refetch()
+  }
+
+  if (loading) return <Spinner />
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="font-semibold text-gray-900 dark:text-white mb-4">New Schedule</h3>
+        <div className="flex gap-3 flex-wrap items-end">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Report Type</label>
+            <select value={type} onChange={e => setType(e.target.value)}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
+              {REPORT_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          {type === 'sme_risk' && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">SME</label>
+              <select value={smeId} onChange={e => setSmeId(e.target.value)}
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
+                <option value="">Select SME…</option>
+                {(smes || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Frequency</label>
+            <select value={frequency} onChange={e => setFrequency(e.target.value)}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
+              {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+          </div>
+          <Button onClick={createSchedule} loading={creating}>Create Schedule</Button>
+        </div>
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Active Schedules</h3>
+        </div>
+        {(!schedules || schedules.length === 0) ? (
+          <p className="px-6 py-8 text-sm text-gray-400 text-center">No schedules yet. Create one above.</p>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs text-gray-500">Report Type</th>
+                <th className="px-6 py-3 text-left text-xs text-gray-500">Frequency</th>
+                <th className="px-6 py-3 text-left text-xs text-gray-500">Next Run</th>
+                <th className="px-6 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+              {schedules.map(s => (
+                <tr key={s.id}>
+                  <td className="px-6 py-3 text-sm font-medium text-gray-900 dark:text-white capitalize">{s.report_type?.replace('_', ' ')}</td>
+                  <td className="px-6 py-3 text-sm text-gray-500 capitalize">{s.frequency}</td>
+                  <td className="px-6 py-3 text-sm text-gray-500">{fmtDate(s.next_run_at, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-6 py-3 text-right">
+                    <button onClick={() => deleteSchedule(s.id)}
+                      className="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-2 py-1 rounded transition-colors">
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
@@ -306,11 +504,14 @@ export default function Reports() {
   const { data: reports, loading, refetch } = useApi(() => reportsApi.list())
   const { data: smes } = useApi(() => smesApi.list({}))
   const { t } = useTranslation()
+  const [tab, setTab] = useState('generate')
   const [type, setType] = useState('portfolio')
   const [smeId, setSmeId] = useState('')
   const [generating, setGenerating] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
   const [selected, setSelected] = useState(null)
   const [detail, setDetail] = useState(null)
+  const reportRef = useRef(null)
 
   async function generate() {
     setGenerating(true)
@@ -328,6 +529,38 @@ export default function Reports() {
     setSelected(id)
   }
 
+  async function downloadPdf() {
+    if (!reportRef.current) return
+    setPdfLoading(true)
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      const { jsPDF } = await import('jspdf')
+      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const imgW = pageW
+      const imgH = (canvas.height * pageW) / canvas.width
+      let heightLeft = imgH
+      let position = 0
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH)
+      heightLeft -= pageH
+      while (heightLeft > 0) {
+        position -= pageH
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH)
+        heightLeft -= pageH
+      }
+      const filename = `${detail.title?.replace(/\s+/g, '_') || 'report'}_${new Date().toISOString().slice(0,10)}.pdf`
+      pdf.save(filename)
+    } catch (err) {
+      console.error('PDF export failed', err)
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
   if (loading) return <AppLayout><Spinner /></AppLayout>
 
   return (
@@ -338,68 +571,101 @@ export default function Reports() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('page.reports.subtitle')}</p>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">{t('page.reports.generate')}</h3>
-          <div className="flex gap-3 flex-wrap">
-            <select value={type} onChange={e => setType(e.target.value)}
-              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
-              {REPORT_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
-            {type === 'sme_risk' && (
-              <select value={smeId} onChange={e => setSmeId(e.target.value)}
-                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
-                <option value="">Select SME…</option>
-                {(smes || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            )}
-            <Button onClick={generate} loading={generating}>{t('page.reports.generate')}</Button>
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
+          {[['generate', 'Generate Reports'], ['schedules', 'Scheduled Reports']].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-              <h3 className="font-semibold text-gray-900 dark:text-white">{t('page.reports.generated')}</h3>
-            </div>
-            <div className="divide-y divide-gray-50 dark:divide-gray-700">
-              {(!reports || reports.length === 0) && (
-                <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">{t('page.reports.none')}</p>
-              )}
-              {(reports || []).map(r => (
-                <button key={r.id} onClick={() => viewReport(r.id)}
-                  className={`w-full text-left px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${selected === r.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''}`}>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{r.title}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 capitalize">
-                    {r.type?.replace('_', ' ')} · {fmtDate(r.created_at, { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            {detail ? (
-              <>
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{detail.title}</h3>
-                  <button onClick={() => window.print()}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                    </svg>
-                    {t('common.print')}
-                  </button>
-                </div>
-                <ReportView detail={detail} />
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full min-h-[200px]">
-                <p className="text-gray-400 dark:text-gray-500">{t('page.reports.selectPrompt')}</p>
+        {tab === 'schedules' ? (
+          <SchedulesTab smes={smes} />
+        ) : (
+          <>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">{t('page.reports.generate')}</h3>
+              <div className="flex gap-3 flex-wrap">
+                <select value={type} onChange={e => setType(e.target.value)}
+                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
+                  {REPORT_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                {type === 'sme_risk' && (
+                  <select value={smeId} onChange={e => setSmeId(e.target.value)}
+                    className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm">
+                    <option value="">Select SME…</option>
+                    {(smes || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                )}
+                <Button onClick={generate} loading={generating}>{t('page.reports.generate')}</Button>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+                  <h3 className="font-semibold text-gray-900 dark:text-white">{t('page.reports.generated')}</h3>
+                </div>
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {(!reports || reports.length === 0) && (
+                    <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">{t('page.reports.none')}</p>
+                  )}
+                  {(reports || []).map(r => (
+                    <button key={r.id} onClick={() => viewReport(r.id)}
+                      className={`w-full text-left px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${selected === r.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''}`}>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{r.title}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 capitalize">
+                        {r.type?.replace('_', ' ')} · {fmtDate(r.created_at, { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                {detail ? (
+                  <>
+                    <div className="flex items-center justify-between mb-5 gap-2 flex-wrap">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">{detail.title}</h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={downloadPdf}
+                          disabled={pdfLoading}
+                          className="flex items-center gap-1.5 text-xs text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 rounded-lg px-3 py-1.5 transition-colors font-medium"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          {pdfLoading ? 'Exporting…' : 'Download PDF'}
+                        </button>
+                        <button onClick={() => window.print()}
+                          className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          {t('common.print')}
+                        </button>
+                      </div>
+                    </div>
+                    <div ref={reportRef}>
+                      <ReportView detail={detail} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-full min-h-[200px]">
+                    <p className="text-gray-400 dark:text-gray-500">{t('page.reports.selectPrompt')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {detail && (

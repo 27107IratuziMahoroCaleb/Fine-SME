@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { authApi } from '../services/api'
+import { authApi, mfaApi } from '../services/api'
 
 const AuthContext = createContext(null)
 
@@ -21,6 +21,18 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const { data } = await authApi.login({ email, password })
+    if (data.mfa_required) {
+      return { mfa_required: true, temp_token: data.temp_token }
+    }
+    localStorage.setItem('access_token', data.access_token)
+    localStorage.setItem('refresh_token', data.refresh_token)
+    const me = await authApi.me()
+    setUser(me.data)
+    return me.data
+  }
+
+  async function completeMfaLogin(temp_token, totp_code) {
+    const { data } = await mfaApi.verifyLogin(temp_token, totp_code)
     localStorage.setItem('access_token', data.access_token)
     localStorage.setItem('refresh_token', data.refresh_token)
     const me = await authApi.me()
@@ -40,7 +52,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, setUser, loading, login, completeMfaLogin, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

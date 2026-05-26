@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
@@ -76,6 +77,81 @@ def watchlist(db: Session = Depends(get_db), current_user: User = Depends(requir
         }
         for sme, pred in rows
     ]
+
+
+class StressTestRequest(BaseModel):
+    scenario_name: str = "Custom Scenario"
+    revenue_drop_pct: float = Field(default=10.0, ge=0, le=100)
+    expense_increase_pct: float = Field(default=10.0, ge=0, le=100)
+
+
+def _classify(score: float) -> RiskLevel:
+    if score < 30:
+        return RiskLevel.LOW
+    if score < 55:
+        return RiskLevel.MEDIUM
+    if score < 75:
+        return RiskLevel.HIGH
+    return RiskLevel.CRITICAL
+
+
+@router.post("/stress-test")
+def stress_test(
+    body: StressTestRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_CAN_VIEW_DETAIL)),
+):
+    subq = (
+        db.query(RiskPrediction.sme_id, func.max(RiskPrediction.id).label("lid"))
+        .group_by(RiskPrediction.sme_id).subquery()
+    )
+    rows = (
+        db.query(SME, RiskPrediction)
+        .join(subq, SME.id == subq.c.sme_id)
+        .join(RiskPrediction, RiskPrediction.id == subq.c.lid)
+        .filter(SME.is_active == True)
+        .all()
+    )
+
+    baseline_dist = {l.value: 0 for l in RiskLevel}
+    stressed_dist = {l.value: 0 for l in RiskLevel}
+    escalations = []
+
+    multiplier = (1 + body.expense_increase_pct / 100) * (1 + body.revenue_drop_pct / 100 * 0.7)
+
+    for sme, pred in rows:
+        base_score = float(pred.overall_risk_score or 0)
+        base_level = pred.overall_risk_level or _classify(base_score)
+        stressed_score = min(100.0, base_score * multiplier)
+        stressed_level = _classify(stressed_score)
+
+        baseline_dist[base_level.value] += 1
+        stressed_dist[stressed_level.value] += 1
+
+        level_order = [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL]
+        if level_order.index(stressed_level) > level_order.index(base_level):
+            escalations.append({
+                "sme_id": sme.id,
+                "sme_name": sme.name,
+                "sector": sme.sector,
+                "from_level": base_level.value,
+                "to_level": stressed_level.value,
+                "base_score": round(base_score, 1),
+                "stressed_score": round(stressed_score, 1),
+            })
+
+    return {
+        "scenario_name": body.scenario_name,
+        "parameters": {
+            "revenue_drop_pct": body.revenue_drop_pct,
+            "expense_increase_pct": body.expense_increase_pct,
+        },
+        "baseline_distribution": baseline_dist,
+        "stressed_distribution": stressed_dist,
+        "escalations": sorted(escalations, key=lambda x: x["stressed_score"], reverse=True),
+        "total_smes": len(rows),
+        "escalation_count": len(escalations),
+    }
 
 
 @router.get("/risk-trend")

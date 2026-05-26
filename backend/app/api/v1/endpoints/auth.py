@@ -1,9 +1,14 @@
+import base64
+import io
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import pyotp
+import qrcode
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
+from jose import JWTError, jwt
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -13,6 +18,7 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     hash_password,
+    verify_password,
 )
 from app.models.user import PasswordResetOTP, User
 from app.schemas.user import (
@@ -63,13 +69,20 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     return create_user(db, data)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login")
 def login(data: UserLogin, db: Session = Depends(get_db)):
     user = authenticate_user(db, data.email, data.password)
+    if user.mfa_enabled and user.mfa_secret:
+        temp_token = jwt.encode(
+            {"sub": str(user.id), "exp": datetime.now(timezone.utc) + timedelta(minutes=5), "type": "mfa_pending"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM,
+        )
+        return {"mfa_required": True, "temp_token": temp_token}
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
     update_refresh_token(db, user, refresh)
-    return TokenResponse(access_token=access, refresh_token=refresh)
+    return {"mfa_required": False, "access_token": access, "refresh_token": refresh, "token_type": "bearer"}
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -101,6 +114,78 @@ def logout(
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+class MFAVerifyLoginRequest(BaseModel):
+    temp_token: str
+    totp_code: str
+
+
+class MFAEnableRequest(BaseModel):
+    totp_code: str
+
+
+class MFADisableRequest(BaseModel):
+    password: str
+
+
+@router.post("/mfa/verify-login", response_model=TokenResponse)
+def mfa_verify_login(data: MFAVerifyLoginRequest, db: Session = Depends(get_db)):
+    try:
+        payload = decode_token(data.temp_token)
+        if payload.get("type") != "mfa_pending":
+            raise ValueError
+        user_id = int(payload["sub"])
+    except (JWTError, ValueError, KeyError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired MFA session")
+    user = get_user_by_id(db, user_id)
+    if not user or not user.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="MFA not configured")
+    totp = pyotp.TOTP(user.mfa_secret)
+    if not totp.verify(data.totp_code, valid_window=1):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
+    access = create_access_token(user.id)
+    refresh = create_refresh_token(user.id)
+    update_refresh_token(db, user, refresh)
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+@router.post("/mfa/setup")
+def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA is already enabled")
+    secret = pyotp.random_base32()
+    current_user.mfa_secret = secret
+    db.commit()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=current_user.email, issuer_name="FINE SME")
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    return {"secret": secret, "uri": uri, "qr_code": qr_b64}
+
+
+@router.post("/mfa/enable")
+def mfa_enable(data: MFAEnableRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user.mfa_secret:
+        raise HTTPException(status_code=400, detail="Call /mfa/setup first")
+    totp = pyotp.TOTP(current_user.mfa_secret)
+    if not totp.verify(data.totp_code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+    current_user.mfa_enabled = True
+    db.commit()
+    return {"message": "MFA enabled successfully"}
+
+
+@router.delete("/mfa/disable")
+def mfa_disable(data: MFADisableRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not verify_password(data.password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    current_user.mfa_enabled = False
+    current_user.mfa_secret = None
+    db.commit()
+    return {"message": "MFA disabled"}
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)

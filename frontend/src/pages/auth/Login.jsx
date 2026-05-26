@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import AuthLayout from '../../components/layout/AuthLayout'
@@ -16,17 +16,28 @@ const DEMO_ACCOUNTS = [
 ]
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, completeMfaLogin } = useAuth()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [serverError, setServerError] = useState('')
+  const [mfaStep, setMfaStep] = useState(false)
+  const [tempToken, setTempToken] = useState('')
+  const [totpCode, setTotpCode] = useState(['', '', '', '', '', ''])
+  const [mfaLoading, setMfaLoading] = useState(false)
+  const totpRefs = useRef([])
+
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm()
 
   async function onSubmit(data) {
     setServerError('')
     try {
-      await login(data.email, data.password)
-      navigate('/dashboard')
+      const result = await login(data.email, data.password)
+      if (result?.mfa_required) {
+        setTempToken(result.temp_token)
+        setMfaStep(true)
+      } else {
+        navigate('/dashboard')
+      }
     } catch (err) {
       setServerError(err.response?.data?.detail || 'Login failed. Please try again.')
     }
@@ -35,6 +46,77 @@ export default function Login() {
   function fillDemo(account) {
     setValue('email', account.email, { shouldValidate: true })
     setValue('password', account.password, { shouldValidate: true })
+  }
+
+  function handleTotpChange(i, val) {
+    const digits = val.replace(/\D/g, '').slice(0, 1)
+    const next = [...totpCode]
+    next[i] = digits
+    setTotpCode(next)
+    if (digits && i < 5) totpRefs.current[i + 1]?.focus()
+  }
+
+  function handleTotpKeyDown(i, e) {
+    if (e.key === 'Backspace' && !totpCode[i] && i > 0) {
+      totpRefs.current[i - 1]?.focus()
+    }
+  }
+
+  async function submitMfa() {
+    const code = totpCode.join('')
+    if (code.length !== 6) return
+    setMfaLoading(true)
+    setServerError('')
+    try {
+      await completeMfaLogin(tempToken, code)
+      navigate('/dashboard')
+    } catch (err) {
+      setServerError(err.response?.data?.detail || 'Invalid code. Please try again.')
+      setTotpCode(['', '', '', '', '', ''])
+      totpRefs.current[0]?.focus()
+    } finally {
+      setMfaLoading(false)
+    }
+  }
+
+  if (mfaStep) {
+    return (
+      <AuthLayout>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">Two-Factor Authentication</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Enter the 6-digit code from your authenticator app.</p>
+
+        <div className="flex justify-center gap-2 mb-6">
+          {totpCode.map((digit, i) => (
+            <input
+              key={i}
+              ref={(el) => (totpRefs.current[i] = el)}
+              type="text"
+              inputMode="numeric"
+              maxLength={1}
+              value={digit}
+              onChange={(e) => handleTotpChange(i, e.target.value)}
+              onKeyDown={(e) => handleTotpKeyDown(i, e)}
+              className="w-11 h-14 text-center text-xl font-bold border-2 border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none transition-colors"
+            />
+          ))}
+        </div>
+
+        {serverError && (
+          <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 mb-4">{serverError}</p>
+        )}
+
+        <Button onClick={submitMfa} loading={mfaLoading} className="w-full" disabled={totpCode.join('').length !== 6}>
+          Verify
+        </Button>
+        <button
+          type="button"
+          onClick={() => { setMfaStep(false); setServerError('') }}
+          className="mt-3 w-full text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        >
+          ← Back to login
+        </button>
+      </AuthLayout>
+    )
   }
 
   return (

@@ -1,4 +1,5 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useState } from 'react'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Legend } from 'recharts'
 import AppLayout from '../../components/layout/AppLayout'
 import Badge from '../../components/ui/Badge'
 import { StatCard } from '../../components/ui/Card'
@@ -8,15 +9,51 @@ import { useTranslation } from '../../hooks/useTranslation'
 import { portfolioApi } from '../../services/api'
 import { Link } from 'react-router-dom'
 
+const RISK_COLORS = { low: '#22c55e', medium: '#eab308', high: '#f97316', critical: '#ef4444' }
+const RISK_LEVELS = ['low', 'medium', 'high', 'critical']
+
 export default function Portfolio() {
   const { data: summary, loading: l1 } = useApi(() => portfolioApi.summary())
   const { data: watchlist, loading: l2 } = useApi(() => portfolioApi.watchlist())
   const { data: trend, loading: l3 } = useApi(() => portfolioApi.riskTrend())
   const { t } = useTranslation()
 
+  const [stressOpen, setStressOpen] = useState(false)
+  const [revenueDrop, setRevenueDrop] = useState(10)
+  const [expenseIncrease, setExpenseIncrease] = useState(10)
+  const [scenarioName, setScenarioName] = useState('Adverse Scenario')
+  const [stressResult, setStressResult] = useState(null)
+  const [stressLoading, setStressLoading] = useState(false)
+  const [stressError, setStressError] = useState('')
+
   if (l1 || l2 || l3) return <AppLayout><Spinner /></AppLayout>
 
   const dist = summary?.risk_distribution || {}
+
+  async function runStressTest() {
+    setStressLoading(true)
+    setStressError('')
+    try {
+      const { data } = await portfolioApi.stressTest({
+        scenario_name: scenarioName,
+        revenue_drop_pct: revenueDrop,
+        expense_increase_pct: expenseIncrease,
+      })
+      setStressResult(data)
+    } catch (err) {
+      setStressError(err.response?.data?.detail || 'Stress test failed.')
+    } finally {
+      setStressLoading(false)
+    }
+  }
+
+  const stressChartData = stressResult
+    ? RISK_LEVELS.map(k => ({
+        name: k.charAt(0).toUpperCase() + k.slice(1),
+        Baseline: stressResult.baseline_distribution[k] ?? 0,
+        Stressed: stressResult.stressed_distribution[k] ?? 0,
+      }))
+    : []
 
   return (
     <AppLayout>
@@ -46,7 +83,7 @@ export default function Portfolio() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <h3 className="font-semibold text-gray-900 dark:text-white">{t('page.portfolio.watchList')}</h3>
@@ -92,6 +129,137 @@ export default function Portfolio() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
+
+      {/* Stress Test Panel */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setStressOpen(o => !o)}
+          className="w-full px-6 py-4 flex items-center justify-between text-left"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Portfolio Stress Test</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Model the impact of adverse economic scenarios on SME risk levels</p>
+          </div>
+          <svg className={`h-5 w-5 text-gray-400 transition-transform ${stressOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {stressOpen && (
+          <div className="px-6 pb-6 space-y-5 border-t border-gray-100 dark:border-gray-700 pt-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Scenario Name
+                </label>
+                <input
+                  type="text"
+                  value={scenarioName}
+                  onChange={e => setScenarioName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Revenue Drop: <span className="text-primary-600 font-bold">{revenueDrop}%</span>
+                </label>
+                <input
+                  type="range" min={0} max={50} value={revenueDrop}
+                  onChange={e => setRevenueDrop(Number(e.target.value))}
+                  className="w-full accent-primary-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Expense Increase: <span className="text-orange-600 font-bold">{expenseIncrease}%</span>
+                </label>
+                <input
+                  type="range" min={0} max={50} value={expenseIncrease}
+                  onChange={e => setExpenseIncrease(Number(e.target.value))}
+                  className="w-full accent-orange-500"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={runStressTest}
+              disabled={stressLoading}
+              className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {stressLoading ? 'Running…' : 'Run Stress Test'}
+            </button>
+
+            {stressError && (
+              <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{stressError}</p>
+            )}
+
+            {stressResult && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Scenario: <strong>{stressResult.scenario_name}</strong></span>
+                  <span className="text-xs text-gray-400">—</span>
+                  <span className="text-sm text-gray-500">
+                    {stressResult.escalation_count} of {stressResult.total_smes} SMEs escalate to higher risk
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Baseline vs Stressed Distribution</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={stressChartData} barSize={16}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="Baseline" fill="#3b82f6" radius={[3, 3, 0, 0]}>
+                          {stressChartData.map((entry, i) => (
+                            <Cell key={i} fill={RISK_COLORS[RISK_LEVELS[i]]} fillOpacity={0.4} />
+                          ))}
+                        </Bar>
+                        <Bar dataKey="Stressed" fill="#f97316" radius={[3, 3, 0, 0]}>
+                          {stressChartData.map((entry, i) => (
+                            <Cell key={i} fill={RISK_COLORS[RISK_LEVELS[i]]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {stressResult.escalations.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">SMEs at Escalated Risk</p>
+                      <div className="overflow-y-auto max-h-44 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-gray-500">SME</th>
+                              <th className="px-3 py-2 text-left text-gray-500">From</th>
+                              <th className="px-3 py-2 text-left text-gray-500">To</th>
+                              <th className="px-3 py-2 text-right text-gray-500">Score</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                            {stressResult.escalations.map(e => (
+                              <tr key={e.sme_id} className="bg-white dark:bg-gray-800">
+                                <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-200">{e.sme_name}</td>
+                                <td className="px-3 py-2 capitalize text-gray-500">{e.from_level}</td>
+                                <td className="px-3 py-2 capitalize font-semibold" style={{ color: RISK_COLORS[e.to_level] }}>{e.to_level}</td>
+                                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{e.stressed_score}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </AppLayout>
   )

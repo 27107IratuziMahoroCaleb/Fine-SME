@@ -1,11 +1,13 @@
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import require_roles
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User, UserRole
 from app.models.report import Report, ReportType
+from app.models.report_schedule import ReportSchedule, ScheduleFrequency
 from app.models.sme import SME
 from app.models.prediction import RiskPrediction
 from app.models.alert import Alert
@@ -58,6 +60,63 @@ def _build_report(db: Session, report_type: ReportType, params: dict) -> dict:
                 sector_map[s][level] = sector_map[s].get(level, 0) + 1
         sectors = sorted(sector_map.values(), key=lambda x: x["smes"], reverse=True)
         return {"sectors": sectors, "total_smes": len(smes), "generated_at": str(datetime.now(timezone.utc))}
+
+    if report_type == ReportType.INTERVENTION:
+        from app.models.recommendation import Recommendation
+        from collections import Counter
+        query = db.query(Recommendation)
+        if params.get("sme_id"):
+            query = query.filter(Recommendation.sme_id == params["sme_id"])
+        recs = query.all()
+        by_cat = dict(Counter(r.category.value if r.category else "unknown" for r in recs))
+        by_status = dict(Counter(r.status.value if r.status else "unknown" for r in recs))
+        sme_map = {s.id: s.name for s in db.query(SME.id, SME.name).all()}
+        return {
+            "total": len(recs),
+            "by_category": by_cat,
+            "by_status": by_status,
+            "items": [
+                {
+                    "id": r.id,
+                    "sme_id": r.sme_id,
+                    "sme_name": sme_map.get(r.sme_id, "Unknown"),
+                    "category": r.category.value if r.category else None,
+                    "title": r.title,
+                    "status": r.status.value if r.status else None,
+                    "priority": r.priority,
+                }
+                for r in recs
+            ],
+            "generated_at": str(datetime.now(timezone.utc)),
+        }
+
+    if report_type == ReportType.CREDIT:
+        from app.models.credit import CreditAssessment
+        assessments = db.query(CreditAssessment).all()
+        sme_map = {s.id: s.name for s in db.query(SME.id, SME.name).all()}
+        from collections import Counter
+        rating_dist = dict(Counter(a.credit_rating.value if a.credit_rating else "unknown" for a in assessments))
+        scores = [float(a.creditworthiness_score or 0) for a in assessments if a.creditworthiness_score]
+        avg_score = round(sum(scores) / len(scores), 1) if scores else 0
+        return {
+            "total": len(assessments),
+            "rating_distribution": rating_dist,
+            "avg_score": avg_score,
+            "items": [
+                {
+                    "id": a.id,
+                    "sme_id": a.sme_id,
+                    "sme_name": sme_map.get(a.sme_id, "Unknown"),
+                    "rating": a.credit_rating.value if a.credit_rating else None,
+                    "score": float(a.creditworthiness_score or 0),
+                    "credit_limit": float(a.recommended_credit_limit or 0),
+                    "interest_rate": float(a.risk_adjusted_rate or 0),
+                    "created_at": str(a.assessment_date),
+                }
+                for a in assessments
+            ],
+            "generated_at": str(datetime.now(timezone.utc)),
+        }
 
     if report_type == ReportType.EXECUTIVE:
         total_smes = db.query(func.count(SME.id)).filter(SME.is_active == True).scalar()
@@ -127,10 +186,88 @@ def list_reports(
     return [{"id": r.id, "title": r.title, "type": r.report_type, "created_at": r.created_at} for r in reports]
 
 
+# ── Scheduled Reports ──────────────────────────────────────────────────────────
+
+class ScheduleCreate(BaseModel):
+    report_type: ReportType
+    sme_id: int | None = None
+    frequency: ScheduleFrequency
+
+
+@router.post("/schedules", status_code=201)
+def create_schedule(
+    data: ScheduleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_CAN_USE)),
+):
+    next_run = _next_run(data.frequency)
+    schedule = ReportSchedule(
+        report_type=data.report_type,
+        sme_id=data.sme_id,
+        frequency=data.frequency,
+        next_run_at=next_run,
+        created_by=current_user.id,
+    )
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    return _schedule_out(schedule)
+
+
+@router.get("/schedules")
+def list_schedules(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_CAN_USE)),
+):
+    schedules = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.created_by == current_user.id, ReportSchedule.is_active == True)
+        .order_by(ReportSchedule.created_at.desc())
+        .all()
+    )
+    return [_schedule_out(s) for s in schedules]
+
+
+@router.delete("/schedules/{schedule_id}", status_code=204)
+def delete_schedule(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_CAN_USE)),
+):
+    s = db.query(ReportSchedule).filter(
+        ReportSchedule.id == schedule_id,
+        ReportSchedule.created_by == current_user.id,
+    ).first()
+    if not s:
+        raise HTTPException(404, "Schedule not found")
+    s.is_active = False
+    db.commit()
+
+
+def _next_run(freq: ScheduleFrequency) -> datetime:
+    now = datetime.now(timezone.utc)
+    if freq == ScheduleFrequency.DAILY:
+        return now + timedelta(days=1)
+    if freq == ScheduleFrequency.WEEKLY:
+        return now + timedelta(weeks=1)
+    return now + timedelta(days=30)
+
+
+def _schedule_out(s: ReportSchedule) -> dict:
+    return {
+        "id": s.id,
+        "report_type": s.report_type,
+        "sme_id": s.sme_id,
+        "frequency": s.frequency,
+        "next_run_at": s.next_run_at,
+        "is_active": s.is_active,
+        "created_at": s.created_at,
+    }
+
+
 @router.get("/{report_id}")
 def get_report(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     r = db.query(Report).filter(Report.id == report_id).first()
     if not r:
-        from fastapi import HTTPException
         raise HTTPException(404, "Report not found")
     return {"id": r.id, "title": r.title, "type": r.report_type, "data": r.data, "created_at": r.created_at}

@@ -19,6 +19,7 @@ import Reports from './pages/reports/Reports'
 import UserManagement from './pages/admin/UserManagement'
 import AuditLogs from './pages/audit/AuditLogs'
 import EngagementOverview from './pages/engagements/EngagementOverview'
+import Profile from './pages/profile/Profile'
 import Unauthorized from './pages/Unauthorized'
 import Landing from './pages/Landing'
 import Spinner from './components/ui/Spinner'
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/engagements" element={<RoleRoute><EngagementOverview /></RoleRoute>} />
           <Route path="/admin/users" element={<RoleRoute><UserManagement /></RoleRoute>} />
           <Route path="/audit" element={<RoleRoute><AuditLogs /></RoleRoute>} />
+          <Route path="/profile" element={<RoleRoute><Profile /></RoleRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

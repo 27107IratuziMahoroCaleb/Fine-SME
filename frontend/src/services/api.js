@@ -42,6 +42,13 @@ export const authApi = {
   resetPassword: (email, code, new_password) => api.post('/auth/reset-password', { email, code, new_password }),
 }
 
+export const mfaApi = {
+  setup: () => api.post('/auth/mfa/setup'),
+  enable: (totp_code) => api.post('/auth/mfa/enable', { totp_code }),
+  disable: (password) => api.delete('/auth/mfa/disable', { data: { password } }),
+  verifyLogin: (temp_token, totp_code) => api.post('/auth/mfa/verify-login', { temp_token, totp_code }),
+}
+
 export const smesApi = {
   list: (p) => api.get('/smes/', { params: p }),
   get: (id) => api.get(`/smes/${id}`),
@@ -95,12 +102,16 @@ export const portfolioApi = {
   summary: () => api.get('/portfolio/summary'),
   watchlist: () => api.get('/portfolio/watchlist'),
   riskTrend: () => api.get('/portfolio/risk-trend'),
+  stressTest: (d) => api.post('/portfolio/stress-test', d),
 }
 
 export const reportsApi = {
   generate: (type, smeId) => api.post('/reports/', null, { params: { report_type: type, sme_id: smeId } }),
   list: () => api.get('/reports/'),
   get: (id) => api.get(`/reports/${id}`),
+  listSchedules: () => api.get('/reports/schedules'),
+  createSchedule: (d) => api.post('/reports/schedules', d),
+  deleteSchedule: (id) => api.delete(`/reports/schedules/${id}`),
 }
 
 export const usersApi = {
