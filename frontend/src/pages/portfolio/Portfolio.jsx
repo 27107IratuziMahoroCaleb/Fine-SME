@@ -1,22 +1,98 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Legend } from 'recharts'
 import AppLayout from '../../components/layout/AppLayout'
 import Badge from '../../components/ui/Badge'
 import { StatCard } from '../../components/ui/Card'
+import PrintDocument from '../../components/ui/PrintDocument'
 import Spinner from '../../components/ui/Spinner'
 import { useApi } from '../../hooks/useApi'
 import { useTranslation } from '../../hooks/useTranslation'
+import { exportPdf } from '../../utils/exportPdf'
 import { portfolioApi } from '../../services/api'
 import { Link } from 'react-router-dom'
 
 const RISK_COLORS = { low: '#22c55e', medium: '#eab308', high: '#f97316', critical: '#ef4444' }
 const RISK_LEVELS = ['low', 'medium', 'high', 'critical']
 
+const S = {
+  sectionTitle: { fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px 0' },
+  th: { fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0 8px 8px 0', borderBottom: '1px solid #e5e7eb', textAlign: 'left' },
+  td: { fontSize: 12, color: '#374151', padding: '7px 8px 7px 0', borderBottom: '1px solid #f3f4f6' },
+  tdBold: { fontSize: 12, fontWeight: 600, color: '#111827', padding: '7px 8px 7px 0', borderBottom: '1px solid #f3f4f6' },
+  statBox: { background: '#f9fafb', borderRadius: 8, padding: '12px 14px', textAlign: 'center' },
+}
+
+function PortfolioPrintContent({ summary, watchlist }) {
+  const dist = summary?.risk_distribution || {}
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 28 }}>
+        {[
+          ['Total SMEs', summary?.total_smes ?? '—', '#2563eb'],
+          ['Active Alerts', summary?.active_alerts ?? '—', '#dc2626'],
+          ['Avg Risk Score', summary?.avg_risk_score ?? '—', '#f97316'],
+          ['Assessed', summary?.smes_assessed ?? '—', '#15803d'],
+        ].map(([label, value, color]) => (
+          <div key={label} style={S.statBox}>
+            <p style={{ fontSize: 10, color: '#9ca3af', margin: '0 0 4px 0' }}>{label}</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color, margin: 0 }}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Risk distribution */}
+      <p style={S.sectionTitle}>Risk Distribution</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 28 }}>
+        {[
+          ['Low Risk', dist.low ?? 0, '#15803d', '#dcfce7'],
+          ['Medium', dist.medium ?? 0, '#854d0e', '#fef9c3'],
+          ['High Risk', dist.high ?? 0, '#c2410c', '#ffedd5'],
+          ['Critical', dist.critical ?? 0, '#dc2626', '#fee2e2'],
+        ].map(([label, value, color, bg]) => (
+          <div key={label} style={{ background: bg, borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
+            <p style={{ fontSize: 10, color: '#6b7280', margin: '0 0 4px 0' }}>{label}</p>
+            <p style={{ fontSize: 24, fontWeight: 800, color, margin: 0 }}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Watch list */}
+      <p style={S.sectionTitle}>Watch List</p>
+      {(!watchlist || watchlist.length === 0)
+        ? <p style={{ fontSize: 12, color: '#9ca3af' }}>No SMEs on watch list.</p>
+        : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['SME', 'Sector', 'Risk Score', 'Risk Level', 'Cash Runway'].map(h => <th key={h} style={S.th}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {watchlist.map(w => (
+                <tr key={w.sme_id}>
+                  <td style={S.tdBold}>{w.sme_name}</td>
+                  <td style={S.td}>{w.sector}</td>
+                  <td style={S.td}>{w.risk_score?.toFixed(0)}</td>
+                  <td style={{ ...S.td, textTransform: 'capitalize', color: RISK_COLORS[w.risk_level] || '#374151', fontWeight: 600 }}>{w.risk_level}</td>
+                  <td style={S.td}>{w.cash_runway_days ?? '—'} days</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </div>
+  )
+}
+
 export default function Portfolio() {
   const { data: summary, loading: l1 } = useApi(() => portfolioApi.summary())
   const { data: watchlist, loading: l2 } = useApi(() => portfolioApi.watchlist())
   const { data: trend, loading: l3 } = useApi(() => portfolioApi.riskTrend())
   const { t } = useTranslation()
+  const printRef = useRef(null)
+  const [exporting, setExporting] = useState(false)
 
   const [stressOpen, setStressOpen] = useState(false)
   const [revenueDrop, setRevenueDrop] = useState(10)
@@ -29,6 +105,14 @@ export default function Portfolio() {
   if (l1 || l2 || l3) return <AppLayout><Spinner /></AppLayout>
 
   const dist = summary?.risk_distribution || {}
+
+  async function handleExport() {
+    if (!printRef.current) return
+    setExporting(true)
+    try {
+      await exportPdf(printRef.current, `portfolio_report_${new Date().toISOString().slice(0, 10)}.pdf`)
+    } finally { setExporting(false) }
+  }
 
   async function runStressTest() {
     setStressLoading(true)
@@ -57,9 +141,28 @@ export default function Portfolio() {
 
   return (
     <AppLayout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('page.portfolio.title')}</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('page.portfolio.subtitle')}</p>
+      {/* Hidden formal print document */}
+      <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', top: 0, width: '794px', pointerEvents: 'none' }}>
+        <PrintDocument ref={printRef} title="Portfolio Management Report" subtitle="SME portfolio risk summary and watch list">
+          <PortfolioPrintContent summary={summary} watchlist={watchlist} />
+        </PrintDocument>
+      </div>
+
+      <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('page.portfolio.title')}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('page.portfolio.subtitle')}</p>
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1.5 text-xs text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 rounded-lg px-3 py-1.5 transition-colors font-medium"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          {exporting ? 'Exporting…' : 'Download PDF'}
+        </button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -69,6 +172,9 @@ export default function Portfolio() {
         <StatCard label="Assessed" value={summary?.smes_assessed ?? '—'} color="text-green-600" />
       </div>
 
+      <div className="mb-2">
+        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Risk Distribution</p>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-6">
         {[
           { k: 'low',      label: 'Low Risk',  color: 'border-green-400 text-green-700 dark:text-green-400' },
@@ -76,9 +182,9 @@ export default function Portfolio() {
           { k: 'high',     label: 'High Risk', color: 'border-orange-400 text-orange-700 dark:text-orange-400' },
           { k: 'critical', label: 'Critical',  color: 'border-red-500 text-red-700 dark:text-red-400' },
         ].map(({ k, label, color }) => (
-          <div key={k} className={`bg-white dark:bg-gray-800 rounded-xl border-l-4 p-4 border border-gray-200 dark:border-gray-700 ${color}`}>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-            <p className={`text-2xl font-bold ${color.split(' ')[1]}`}>{dist[k] ?? 0}</p>
+          <div key={k} className={`bg-white dark:bg-gray-800 rounded-xl border-l-4 p-5 border border-gray-200 dark:border-gray-700 ${color}`}>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+            <p className={`text-3xl font-bold ${color.split(' ')[1]}`}>{dist[k] ?? 0}</p>
           </div>
         ))}
       </div>
@@ -107,8 +213,11 @@ export default function Portfolio() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">{t('page.portfolio.trend')}</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+            <h3 className="font-semibold text-gray-900 dark:text-white">{t('page.portfolio.trend')}</h3>
+          </div>
+          <div className="p-6">
           {(!trend || trend.length === 0) ? (
             <p className="text-sm text-gray-400">{t('page.portfolio.noTrend')}</p>
           ) : (
@@ -128,6 +237,7 @@ export default function Portfolio() {
               </AreaChart>
             </ResponsiveContainer>
           )}
+          </div>
         </div>
       </div>
 
