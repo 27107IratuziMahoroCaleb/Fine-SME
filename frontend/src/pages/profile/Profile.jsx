@@ -1,38 +1,120 @@
 import { useState } from 'react'
 import AppLayout from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/AuthContext'
-import { mfaApi, authApi } from '../../services/api'
+import { mfaApi, authApi, usersApi } from '../../services/api'
+
+const INSTITUTION_TYPES = [
+  { value: 'bank', label: 'Bank' },
+  { value: 'microfinance', label: 'Microfinance' },
+  { value: 'sacco', label: 'SACCO' },
+  { value: 'development_program', label: 'Development Program' },
+  { value: 'other', label: 'Other' },
+]
+
+function LockIcon() {
+  return (
+    <svg className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600 ml-1 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+    </svg>
+  )
+}
+
+function Field({ label, value, locked, children }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+        {label}
+        {locked && <LockIcon />}
+      </dt>
+      {children ?? (
+        <dd className={`text-sm font-medium ${locked ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+          {value || '—'}
+        </dd>
+      )}
+    </div>
+  )
+}
 
 export default function Profile() {
   const { user, setUser } = useAuth()
 
-  const [mfaState, setMfaState] = useState('idle') // idle | setup | confirm | disabling
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({
+    full_name: user?.full_name ?? '',
+    phone: user?.phone ?? '',
+    organization: user?.organization ?? '',
+    institution_type: user?.institution_type ?? '',
+  })
+  const [saveLoading, setSaveLoading] = useState(false)
+  const [saveMessage, setSaveMessage] = useState(null)
+
+  const [mfaState, setMfaState] = useState('idle')
   const [qrCode, setQrCode] = useState(null)
   const [secret, setSecret] = useState('')
   const [totpCode, setTotpCode] = useState('')
   const [disablePassword, setDisablePassword] = useState('')
-  const [message, setMessage] = useState(null) // { type: 'success'|'error', text }
-  const [loading, setLoading] = useState(false)
+  const [mfaMessage, setMfaMessage] = useState(null)
+  const [mfaLoading, setMfaLoading] = useState(false)
 
-  async function startSetup() {
-    setLoading(true)
-    setMessage(null)
+  function startEdit() {
+    setForm({
+      full_name: user?.full_name ?? '',
+      phone: user?.phone ?? '',
+      organization: user?.organization ?? '',
+      institution_type: user?.institution_type ?? '',
+    })
+    setSaveMessage(null)
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+    setSaveMessage(null)
+  }
+
+  async function saveEdit() {
+    setSaveLoading(true)
+    setSaveMessage(null)
+    try {
+      const payload = {}
+      if (form.full_name !== (user?.full_name ?? '')) payload.full_name = form.full_name
+      if (form.phone !== (user?.phone ?? '')) payload.phone = form.phone || null
+      if (form.organization !== (user?.organization ?? '')) payload.organization = form.organization || null
+      if (form.institution_type !== (user?.institution_type ?? '')) payload.institution_type = form.institution_type || null
+
+      if (Object.keys(payload).length > 0) {
+        await usersApi.updateMe(payload)
+      }
+      const { data } = await authApi.me()
+      setUser(data)
+      setEditing(false)
+      setSaveMessage({ type: 'success', text: 'Profile updated successfully.' })
+    } catch (err) {
+      setSaveMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to save changes.' })
+    } finally {
+      setSaveLoading(false)
+    }
+  }
+
+  async function startMfaSetup() {
+    setMfaLoading(true)
+    setMfaMessage(null)
     try {
       const { data } = await mfaApi.setup()
       setQrCode(data.qr_code)
       setSecret(data.secret)
       setMfaState('setup')
     } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to start MFA setup.' })
+      setMfaMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to start MFA setup.' })
     } finally {
-      setLoading(false)
+      setMfaLoading(false)
     }
   }
 
   async function enableMfa() {
     if (totpCode.length !== 6) return
-    setLoading(true)
-    setMessage(null)
+    setMfaLoading(true)
+    setMfaMessage(null)
     try {
       await mfaApi.enable(totpCode)
       const { data } = await authApi.me()
@@ -40,31 +122,33 @@ export default function Profile() {
       setMfaState('idle')
       setTotpCode('')
       setQrCode(null)
-      setMessage({ type: 'success', text: 'MFA enabled. Your account is now protected with two-factor authentication.' })
+      setMfaMessage({ type: 'success', text: 'MFA enabled. Your account is now protected with two-factor authentication.' })
     } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.detail || 'Invalid code. Please try again.' })
+      setMfaMessage({ type: 'error', text: err.response?.data?.detail || 'Invalid code. Please try again.' })
     } finally {
-      setLoading(false)
+      setMfaLoading(false)
     }
   }
 
   async function disableMfa() {
     if (!disablePassword) return
-    setLoading(true)
-    setMessage(null)
+    setMfaLoading(true)
+    setMfaMessage(null)
     try {
       await mfaApi.disable(disablePassword)
       const { data } = await authApi.me()
       setUser(data)
       setMfaState('idle')
       setDisablePassword('')
-      setMessage({ type: 'success', text: 'MFA has been disabled.' })
+      setMfaMessage({ type: 'success', text: 'MFA has been disabled.' })
     } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to disable MFA.' })
+      setMfaMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to disable MFA.' })
     } finally {
-      setLoading(false)
+      setMfaLoading(false)
     }
   }
+
+  const inputClass = 'w-full px-3 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500'
 
   return (
     <AppLayout>
@@ -76,34 +160,115 @@ export default function Profile() {
 
         {/* Account info */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Account Details</h2>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Full name</dt>
-              <dd className="font-medium text-gray-900 dark:text-white mt-0.5">{user?.full_name}</dd>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Account Details</h2>
+            {!editing ? (
+              <button
+                onClick={startEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                </svg>
+                Edit
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={cancelEdit}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={saveLoading}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition disabled:opacity-50"
+                >
+                  {saveLoading ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {saveMessage && (
+            <div className={`mb-5 px-4 py-3 rounded-lg text-sm ${saveMessage.type === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+              {saveMessage.text}
             </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Email</dt>
-              <dd className="font-medium text-gray-900 dark:text-white mt-0.5">{user?.email}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Role</dt>
-              <dd className="font-medium text-gray-900 dark:text-white mt-0.5 capitalize">{user?.role?.replace('_', ' ')}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Organization</dt>
-              <dd className="font-medium text-gray-900 dark:text-white mt-0.5">{user?.organization || '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Phone</dt>
-              <dd className="font-medium text-gray-900 dark:text-white mt-0.5">{user?.phone || '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Member since</dt>
-              <dd className="font-medium text-gray-900 dark:text-white mt-0.5">
+          )}
+
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-5 text-sm">
+            <Field label="Full name">
+              {editing ? (
+                <input
+                  className={inputClass}
+                  value={form.full_name}
+                  onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+                  placeholder="Full name"
+                />
+              ) : (
+                <dd className="text-sm font-medium text-gray-900 dark:text-white">{user?.full_name || '—'}</dd>
+              )}
+            </Field>
+
+            <Field label="Email" locked>
+              <dd className="text-sm font-medium text-gray-400 dark:text-gray-500">{user?.email || '—'}</dd>
+            </Field>
+
+            <Field label="Phone">
+              {editing ? (
+                <input
+                  className={inputClass}
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="+250 7xx xxx xxx"
+                />
+              ) : (
+                <dd className="text-sm font-medium text-gray-900 dark:text-white">{user?.phone || '—'}</dd>
+              )}
+            </Field>
+
+            <Field label="Role" locked>
+              <dd className="text-sm font-medium text-gray-400 dark:text-gray-500 capitalize">{user?.role?.replace('_', ' ') || '—'}</dd>
+            </Field>
+
+            <Field label="Organization">
+              {editing ? (
+                <input
+                  className={inputClass}
+                  value={form.organization}
+                  onChange={e => setForm(f => ({ ...f, organization: e.target.value }))}
+                  placeholder="Organization name"
+                />
+              ) : (
+                <dd className="text-sm font-medium text-gray-900 dark:text-white">{user?.organization || '—'}</dd>
+              )}
+            </Field>
+
+            <Field label="Institution type">
+              {editing ? (
+                <select
+                  className={inputClass}
+                  value={form.institution_type}
+                  onChange={e => setForm(f => ({ ...f, institution_type: e.target.value }))}
+                >
+                  <option value="">— Select —</option>
+                  {INSTITUTION_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <dd className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                  {user?.institution_type?.replace('_', ' ') || '—'}
+                </dd>
+              )}
+            </Field>
+
+            <Field label="Member since" locked>
+              <dd className="text-sm font-medium text-gray-400 dark:text-gray-500">
                 {user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
               </dd>
-            </div>
+            </Field>
           </dl>
         </div>
 
@@ -114,24 +279,24 @@ export default function Profile() {
               <h2 className="text-base font-semibold text-gray-900 dark:text-white">Two-Factor Authentication</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Add an extra layer of security using an authenticator app.</p>
             </div>
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${user?.mfa_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${user?.mfa_enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
               {user?.mfa_enabled ? 'Enabled' : 'Disabled'}
             </span>
           </div>
 
-          {message && (
-            <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
-              {message.text}
+          {mfaMessage && (
+            <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${mfaMessage.type === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+              {mfaMessage.text}
             </div>
           )}
 
           {!user?.mfa_enabled && mfaState === 'idle' && (
             <button
-              onClick={startSetup}
-              disabled={loading}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              onClick={startMfaSetup}
+              disabled={mfaLoading}
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
             >
-              {loading ? 'Setting up…' : 'Enable MFA'}
+              {mfaLoading ? 'Setting up…' : 'Enable MFA'}
             </button>
           )}
 
@@ -165,10 +330,10 @@ export default function Profile() {
                 </div>
                 <button
                   onClick={enableMfa}
-                  disabled={loading || totpCode.length !== 6}
-                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                  disabled={mfaLoading || totpCode.length !== 6}
+                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
                 >
-                  {loading ? 'Verifying…' : 'Confirm'}
+                  {mfaLoading ? 'Verifying…' : 'Confirm'}
                 </button>
                 <button
                   onClick={() => { setMfaState('idle'); setQrCode(null); setTotpCode('') }}
@@ -182,8 +347,8 @@ export default function Profile() {
 
           {user?.mfa_enabled && mfaState === 'idle' && (
             <button
-              onClick={() => { setMfaState('disabling'); setMessage(null) }}
-              className="px-4 py-2 border border-red-200 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              onClick={() => { setMfaState('disabling'); setMfaMessage(null) }}
+              className="px-4 py-2 border border-red-200 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition"
             >
               Disable MFA
             </button>
@@ -205,10 +370,10 @@ export default function Profile() {
                 </div>
                 <button
                   onClick={disableMfa}
-                  disabled={loading || !disablePassword}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                  disabled={mfaLoading || !disablePassword}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
                 >
-                  {loading ? 'Disabling…' : 'Disable'}
+                  {mfaLoading ? 'Disabling…' : 'Disable'}
                 </button>
                 <button
                   onClick={() => { setMfaState('idle'); setDisablePassword('') }}
