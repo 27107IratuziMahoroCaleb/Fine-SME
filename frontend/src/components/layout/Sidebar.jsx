@@ -48,28 +48,28 @@ export default function Sidebar({ onClose }) {
         })}
       </nav>
 
-      <div className="px-4 py-3 border-t border-gray-800 space-y-2">
+      <div className="px-3 py-3 border-t border-gray-800">
         <NavLink
           to="/profile"
           onClick={onClose}
           className={({ isActive }) =>
             clsx(
-              'flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs transition-colors',
+              'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors',
               isActive ? 'bg-primary-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
             )
           }
         >
-          <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-          </svg>
-          <span className="truncate">{user?.full_name ?? 'Profile'}</span>
+          <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {user?.full_name?.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() ?? '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate leading-tight">{user?.full_name ?? 'Profile'}</p>
+            <p className="text-xs text-gray-500 capitalize leading-tight">{role?.replace('_', ' ') ?? 'unknown'}</p>
+          </div>
           {user?.mfa_enabled && (
-            <span className="ml-auto text-green-400 text-xs font-bold">MFA</span>
+            <span className="flex-shrink-0 text-xs font-semibold text-green-400 bg-green-900/40 px-1.5 py-0.5 rounded">MFA</span>
           )}
         </NavLink>
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-400 capitalize">
-          {role?.replace('_', ' ') ?? 'unknown'}
-        </span>
       </div>
     </aside>
   )
