@@ -30,12 +30,37 @@ random.seed(42)
 # Users
 # ---------------------------------------------------------------------------
 USERS = [
-    dict(full_name="Alice Uwimana",      email="alice@bk.rw",        role=UserRole.LENDER,          institution_type=InstitutionType.BANK,            organization="Bank of Kigali",       password="Password1!"),
-    dict(full_name="Jean Habimana",      email="jean@unguka.rw",      role=UserRole.LENDER,          institution_type=InstitutionType.MICROFINANCE,     organization="Unguka Bank",           password="Password1!"),
-    dict(full_name="Diane Mukamana",     email="diane@sme.rw",        role=UserRole.SME_ADVISOR,     institution_type=InstitutionType.DEVELOPMENT_PROGRAM, organization="RDB SME Program",    password="Password1!"),
-    dict(full_name="Eric Niyonzima",     email="eric@sacco.rw",       role=UserRole.RISK_ANALYST,    institution_type=InstitutionType.SACCO,            organization="Umurenge SACCO",        password="Password1!"),
-    dict(full_name="Grace Ineza",        email="grace@minecofin.rw",  role=UserRole.PROGRAM_MANAGER, institution_type=InstitutionType.DEVELOPMENT_PROGRAM, organization="MINECOFIN",         password="Password1!"),
+    dict(full_name="Alice Uwimana",      email="alice@bk.rw",        role=UserRole.LENDER,          institution_type=InstitutionType.BANK,               organization="Bank of Kigali",       password="Password1!"),
+    dict(full_name="Jean Habimana",      email="jean@unguka.rw",      role=UserRole.LENDER,          institution_type=InstitutionType.MICROFINANCE,        organization="Unguka Bank",           password="Password1!"),
+    dict(full_name="Diane Mukamana",     email="diane@sme.rw",        role=UserRole.SME_ADVISOR,     institution_type=InstitutionType.DEVELOPMENT_PROGRAM, organization="RDB SME Program",      password="Password1!"),
+    dict(full_name="Robert Mugisha",     email="robert@bds.rw",       role=UserRole.SME_ADVISOR,     institution_type=InstitutionType.DEVELOPMENT_PROGRAM, organization="BDS Rwanda",           password="Password1!"),
+    dict(full_name="Eric Niyonzima",     email="eric@sacco.rw",       role=UserRole.RISK_ANALYST,    institution_type=InstitutionType.SACCO,               organization="Umurenge SACCO",        password="Password1!"),
+    dict(full_name="Grace Ineza",        email="grace@minecofin.rw",  role=UserRole.PROGRAM_MANAGER, institution_type=InstitutionType.DEVELOPMENT_PROGRAM, organization="MINECOFIN",            password="Password1!"),
 ]
+
+# SME name → advisor email (None = unassigned, admin can assign later)
+ADVISOR_ASSIGNMENTS = {
+    # Diane — RDB SME Program (mix of all risk levels)
+    "Kigali Fresh Organics":      "diane@sme.rw",
+    "TechHub Rwanda":             "diane@sme.rw",
+    "Kimironko Electronics":      "diane@sme.rw",
+    "Musanze Potato Traders":     "diane@sme.rw",
+    "Nyamirambo Fashion House":   "diane@sme.rw",
+    "Kicukiro Bakery & Café":     "diane@sme.rw",
+    "Remera Printing Press":      "diane@sme.rw",
+    "Nyamata Craft & Souvenir":   "diane@sme.rw",
+    # Robert — BDS Rwanda (mix of all risk levels)
+    "Muhanga Dairy Cooperative":  "robert@bds.rw",
+    "Rubavu Beach Resort":        "robert@bds.rw",
+    "Bugesera Brick Works":       "robert@bds.rw",
+    "Huye Transport SARL":        "robert@bds.rw",
+    "Rwamagana Agro-Input Store": "robert@bds.rw",
+    "Gikondo Metal Fabricators":  "robert@bds.rw",
+    "Rusizi Fishing Enterprise":  "robert@bds.rw",
+    # Unassigned — admin can assign from the panel
+    "Nyagatare Cattle Ranch":     None,
+    "Gisenyi Hardware Store":     None,
+}
 
 # ---------------------------------------------------------------------------
 # SME definitions — (name, sector, sub, size, province, district, owner, phone, employees, profile)
@@ -286,14 +311,28 @@ def main():
         total_users = db.query(User).count()
         print(f"   OK  {total_users} users in database")
 
+        # ── Advisor assignments ────────────────────────────────
+        advisor_map = {}
+        for email in set(v for v in ADVISOR_ASSIGNMENTS.values() if v):
+            u = db.query(User).filter(User.email == email).first()
+            if u:
+                advisor_map[email] = u.id
+
         # ── SMEs & Transactions ────────────────────────────────
         print("\n[2/4] Creating SMEs and transactions...")
         sme_records = []
         for s in SMES:
+            advisor_email = ADVISOR_ASSIGNMENTS.get(s["name"])
+            advisor_id = advisor_map.get(advisor_email) if advisor_email else None
+
             existing = db.query(SME).filter(SME.name == s["name"]).first()
             if existing:
+                # Update advisor assignment even on existing records
+                existing.assigned_advisor_id = advisor_id
+                db.commit(); db.refresh(existing)
+                label = advisor_email.split("@")[0] if advisor_email else "unassigned"
+                print(f"   ~  {s['name']} (exists — advisor: {label})")
                 sme_records.append(existing)
-                print(f"   ~  {s['name']} (already exists)")
                 continue
 
             sme = SME(
@@ -301,7 +340,7 @@ def main():
                 size=s["size"], location_province=s["province"], location_district=s["district"],
                 owner_name=s["owner"], owner_phone=s["phone"], employee_count=s["employees"],
                 description=s["desc"], established_date=s["established"],
-                created_by=admin.id,
+                created_by=admin.id, assigned_advisor_id=advisor_id,
             )
             db.add(sme); db.commit(); db.refresh(sme)
 
@@ -310,7 +349,8 @@ def main():
             db.add_all(txns); db.commit()
 
             sme_records.append(sme)
-            print(f"   OK  {sme.name} — {len(txns)} transactions")
+            label = advisor_email.split("@")[0] if advisor_email else "unassigned"
+            print(f"   OK  {sme.name} — {len(txns)} txns — advisor: {label}")
 
         # ── Predictions, Alerts, Recommendations ──────────────
         print("\n[3/4] Running predictions, alerts & recommendations...")
@@ -332,8 +372,10 @@ def main():
         from app.models.alert import Alert
         from app.models.recommendation import Recommendation
 
+        assigned = db.query(SME).filter(SME.assigned_advisor_id != None).count()
+        unassigned = db.query(SME).filter(SME.assigned_advisor_id == None).count()
         print(f"   Users          : {db.query(User).count()}")
-        print(f"   SMEs           : {db.query(SME).count()}")
+        print(f"   SMEs           : {db.query(SME).count()} ({assigned} assigned, {unassigned} unassigned)")
         print(f"   Transactions   : {db.query(Transaction).count()}")
         print(f"   Predictions    : {db.query(RiskPrediction).count()}")
         print(f"   Alerts         : {db.query(Alert).count()}")
