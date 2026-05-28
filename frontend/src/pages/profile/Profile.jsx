@@ -48,6 +48,33 @@ export default function Profile() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState(null)
 
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
+  const [pwLoading, setPwLoading] = useState(false)
+  const [pwMessage, setPwMessage] = useState(null)
+
+  async function changePassword(e) {
+    e.preventDefault()
+    setPwMessage(null)
+    if (pwForm.next !== pwForm.confirm) {
+      setPwMessage({ type: 'error', text: 'New passwords do not match.' })
+      return
+    }
+    if (pwForm.next.length < 8) {
+      setPwMessage({ type: 'error', text: 'New password must be at least 8 characters.' })
+      return
+    }
+    setPwLoading(true)
+    try {
+      await authApi.changePassword(pwForm.current, pwForm.next)
+      setPwForm({ current: '', next: '', confirm: '' })
+      setPwMessage({ type: 'success', text: 'Password changed successfully.' })
+    } catch (err) {
+      setPwMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to change password.' })
+    } finally {
+      setPwLoading(false)
+    }
+  }
+
   const [mfaState, setMfaState] = useState('idle')
   const [qrCode, setQrCode] = useState(null)
   const [secret, setSecret] = useState('')
@@ -270,6 +297,65 @@ export default function Profile() {
               </dd>
             </Field>
           </dl>
+        </div>
+
+        {/* Change Password */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1">Change Password</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">Enter your current password to set a new one.</p>
+
+          {pwMessage && (
+            <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${pwMessage.type === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+              {pwMessage.text}
+            </div>
+          )}
+
+          <form onSubmit={changePassword} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Current password</label>
+              <input
+                type="password"
+                required
+                value={pwForm.current}
+                onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))}
+                className={inputClass}
+                placeholder="Your current password"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">New password</label>
+                <input
+                  type="password"
+                  required
+                  value={pwForm.next}
+                  onChange={e => setPwForm(f => ({ ...f, next: e.target.value }))}
+                  className={inputClass}
+                  placeholder="Min. 8 characters"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Confirm new password</label>
+                <input
+                  type="password"
+                  required
+                  value={pwForm.confirm}
+                  onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
+                  className={inputClass}
+                  placeholder="Repeat new password"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={pwLoading || !pwForm.current || !pwForm.next || !pwForm.confirm}
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
+              >
+                {pwLoading ? 'Updating…' : 'Update password'}
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* MFA */}
