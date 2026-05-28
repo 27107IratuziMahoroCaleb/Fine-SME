@@ -191,6 +191,7 @@ export default function SMEDetail() {
             ['Phone', sme.owner_phone],
             ['Email', sme.owner_email],
             ['Employees', sme.employee_count],
+            ['Advisor', sme.assigned_advisor_name],
           ].map(([l, v]) => v ? (
             <div key={l} className="flex justify-between py-1.5 border-b border-gray-50 dark:border-gray-700 last:border-0">
               <span className="text-xs text-gray-500 dark:text-gray-400">{l}</span>

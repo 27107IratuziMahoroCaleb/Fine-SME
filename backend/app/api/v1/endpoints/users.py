@@ -26,6 +26,14 @@ def get_users(
     return list_users(db, skip, limit)
 
 
+@router.get("/advisors", response_model=list[UserOut])
+def get_advisors(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    return db.query(User).filter(User.role == UserRole.SME_ADVISOR, User.is_active == True).all()
+
+
 @router.get("/{user_id}", response_model=UserOut)
 def get_user(
     user_id: int,

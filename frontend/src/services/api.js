@@ -117,6 +117,7 @@ export const reportsApi = {
 
 export const usersApi = {
   list: () => api.get('/users/'),
+  advisors: () => api.get('/users/advisors'),
   updateMe: (d) => api.patch('/users/me', d),
   deactivate: (id) => api.patch(`/users/${id}/deactivate`),
   activate: (id) => api.patch(`/users/${id}/activate`),

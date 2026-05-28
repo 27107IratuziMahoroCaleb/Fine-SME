@@ -20,12 +20,12 @@ def list_smes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return sme_service.list_smes(db, skip, limit, sector, active_only)
+    return sme_service.list_smes(db, skip, limit, sector, active_only, caller=current_user)
 
 
 @router.post("/", response_model=SMEOut, status_code=201)
 def create_sme(data: SMECreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*_CAN_WRITE))):
-    sme = sme_service.create_sme(db, data, current_user.id)
+    sme = sme_service.create_sme(db, data, current_user.id, caller_role=current_user.role)
     audit_service.log(db, "create_sme", current_user.id, "sme", sme.id, f"Created SME {sme.name}")
     return sme
 
@@ -42,7 +42,7 @@ def get_sme(sme_id: int, db: Session = Depends(get_db), current_user: User = Dep
 
 @router.patch("/{sme_id}", response_model=SMEOut)
 def update_sme(sme_id: int, data: SMEUpdate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*_CAN_WRITE))):
-    sme = sme_service.update_sme(db, sme_id, data)
+    sme = sme_service.update_sme(db, sme_id, data, caller_role=current_user.role)
     audit_service.log(db, "update_sme", current_user.id, "sme", sme_id)
     return sme
 

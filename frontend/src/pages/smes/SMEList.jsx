@@ -9,7 +9,7 @@ import Input from '../../components/ui/Input'
 import { useApi } from '../../hooks/useApi'
 import { useRole } from '../../hooks/useRole'
 import { useTranslation } from '../../hooks/useTranslation'
-import { smesApi, engagementsApi } from '../../services/api'
+import { smesApi, engagementsApi, usersApi } from '../../services/api'
 import { useForm } from 'react-hook-form'
 
 const ENG_COLORS = {
@@ -29,14 +29,19 @@ const PROVINCES = ['Kigali', 'Eastern', 'Western', 'Northern', 'Southern']
 const SIZES = [{ value: 'micro', label: 'Micro (1-5)' }, { value: 'small', label: 'Small (6-50)' }, { value: 'medium', label: 'Medium (51-250)' }]
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-function AddSMEModal({ open, onClose, onCreated, t }) {
+function AddSMEModal({ open, onClose, onCreated, t, isAdmin }) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm()
   const [err, setErr] = useState('')
+  const { data: advisors } = useApi(() => isAdmin ? usersApi.advisors() : Promise.resolve({ data: [] }), [isAdmin])
 
   async function onSubmit(data) {
     setErr('')
     try {
-      await smesApi.create({ ...data, employee_count: Number(data.employee_count || 0) })
+      await smesApi.create({
+        ...data,
+        employee_count: Number(data.employee_count || 0),
+        assigned_advisor_id: data.assigned_advisor_id ? Number(data.assigned_advisor_id) : null,
+      })
       reset(); onCreated(); onClose()
     } catch (e) { setErr(e.response?.data?.detail || 'Failed to create SME') }
   }
@@ -76,6 +81,15 @@ function AddSMEModal({ open, onClose, onCreated, t }) {
           <Input label="Owner Phone" {...register('owner_phone')} />
           <Input label="Employees" type="number" {...register('employee_count')} />
         </div>
+        {isAdmin && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Assign Advisor <span className="text-gray-400 font-normal">(optional)</span></label>
+            <select className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm" {...register('assigned_advisor_id')}>
+              <option value="">— Unassigned —</option>
+              {(advisors || []).map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+            </select>
+          </div>
+        )}
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose} className="flex-1">{t('common.cancel')}</Button>
@@ -92,7 +106,7 @@ export default function SMEList() {
   const [sectorFilter, setSectorFilter] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const { isLender } = useRole()
+  const { isLender, isAdmin } = useRole()
   const { t } = useTranslation()
   const { data: smes, loading, refetch } = useApi(() => smesApi.list({}))
   const { data: myEngs } = useApi(() => isLender ? engagementsApi.mine() : Promise.resolve({ data: [] }), [isLender])
@@ -124,7 +138,7 @@ export default function SMEList() {
   function handleSearch(e) { setSearch(e.target.value); setPage(1) }
   function handleSector(e) { setSectorFilter(e.target.value); setPage(1) }
 
-  const colSpan = isLender ? 8 : 7
+  const colSpan = isLender ? 9 : 8
 
   return (
     <AppLayout>
@@ -136,7 +150,7 @@ export default function SMEList() {
         <Button onClick={() => setModalOpen(true)}>{t('page.smes.add')}</Button>
       </div>
 
-      <AddSMEModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={refetch} t={t} />
+      <AddSMEModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={refetch} t={t} isAdmin={isAdmin} />
 
       <div className="flex flex-wrap gap-3 mb-4">
         <input
@@ -169,7 +183,7 @@ export default function SMEList() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  {[t('common.name'), t('common.sector'), t('common.size'), t('common.location'), t('common.owner'), t('common.employees'), ...(isLender ? [t('common.status')] : []), ''].map(h => (
+                  {[t('common.name'), t('common.sector'), t('common.size'), t('common.location'), t('common.owner'), t('common.employees'), 'Advisor', ...(isLender ? [t('common.status')] : []), ''].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -183,6 +197,7 @@ export default function SMEList() {
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{[s.location_district, s.location_province].filter(Boolean).join(', ') || '—'}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.owner_name || '—'}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.employee_count}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.assigned_advisor_name || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                     {isLender && (
                       <td className="px-4 py-3">
                         {engMap[s.id] ? (

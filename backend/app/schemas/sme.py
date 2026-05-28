@@ -18,6 +18,7 @@ class SMECreate(BaseModel):
     established_date: Optional[date] = None
     employee_count: int = 0
     description: Optional[str] = None
+    assigned_advisor_id: Optional[int] = None
 
 
 class SMEUpdate(BaseModel):
@@ -33,6 +34,7 @@ class SMEUpdate(BaseModel):
     employee_count: Optional[int] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    assigned_advisor_id: Optional[int] = None
 
 
 class SMEOut(BaseModel):
@@ -52,5 +54,7 @@ class SMEOut(BaseModel):
     description: Optional[str]
     is_active: bool
     created_at: Optional[datetime]
+    assigned_advisor_id: Optional[int]
+    assigned_advisor_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
