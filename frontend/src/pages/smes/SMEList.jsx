@@ -110,6 +110,18 @@ export default function SMEList() {
   const { t } = useTranslation()
   const { data: smes, loading, refetch } = useApi(() => smesApi.list({}))
   const { data: myEngs } = useApi(() => isLender ? engagementsApi.mine() : Promise.resolve({ data: [] }), [isLender])
+  const { data: advisors } = useApi(() => isAdmin ? usersApi.advisors() : Promise.resolve({ data: [] }), [isAdmin])
+  const [assigningId, setAssigningId] = useState(null)
+
+  async function assignAdvisor(smeId, advisorId) {
+    setAssigningId(smeId)
+    try {
+      await smesApi.update(smeId, { assigned_advisor_id: advisorId ? Number(advisorId) : null })
+      refetch()
+    } finally {
+      setAssigningId(null)
+    }
+  }
 
   const engMap = useMemo(() => {
     const m = {}
@@ -197,7 +209,23 @@ export default function SMEList() {
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{[s.location_district, s.location_province].filter(Boolean).join(', ') || '—'}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.owner_name || '—'}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.employee_count}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.assigned_advisor_name || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                    <td className="px-4 py-3">
+                      {isAdmin ? (
+                        <select
+                          defaultValue={s.assigned_advisor_id ? String(s.assigned_advisor_id) : ''}
+                          onChange={e => assignAdvisor(s.id, e.target.value)}
+                          disabled={assigningId === s.id}
+                          className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1 text-xs focus:outline-none focus:border-primary-500 disabled:opacity-50 max-w-[140px]"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {(advisors || []).map(a => (
+                            <option key={a.id} value={String(a.id)}>{a.full_name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-gray-600 dark:text-gray-300">{s.assigned_advisor_name || <span className="text-gray-300 dark:text-gray-600">—</span>}</span>
+                      )}
+                    </td>
                     {isLender && (
                       <td className="px-4 py-3">
                         {engMap[s.id] ? (

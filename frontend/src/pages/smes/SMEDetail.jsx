@@ -8,7 +8,7 @@ import { Card } from '../../components/ui/Card'
 import { useApi } from '../../hooks/useApi'
 import { useRole } from '../../hooks/useRole'
 import { useTranslation } from '../../hooks/useTranslation'
-import { smesApi, predictionsApi, transactionsApi, engagementsApi } from '../../services/api'
+import { smesApi, predictionsApi, transactionsApi, engagementsApi, usersApi } from '../../services/api'
 
 const ENGAGEMENT_STATUSES = [
   { value: 'prospect',     label: 'Prospect',     color: 'bg-blue-100 text-blue-700' },
@@ -135,12 +135,90 @@ function EngagementPanel({ smeId, t }) {
   )
 }
 
+function AdvisorPanel({ sme, onSaved, t }) {
+  const { data: advisors } = useApi(() => usersApi.advisors())
+  const [advisorId, setAdvisorId] = useState(sme.assigned_advisor_id ? String(sme.assigned_advisor_id) : '')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState(null)
+
+  const isDirty = (advisorId || null) !== (sme.assigned_advisor_id ? String(sme.assigned_advisor_id) : null)
+
+  async function save() {
+    setSaving(true)
+    setMessage(null)
+    try {
+      await smesApi.update(sme.id, { assigned_advisor_id: advisorId ? Number(advisorId) : null })
+      setMessage({ type: 'success', text: advisorId ? 'Advisor assigned.' : 'Advisor removed.' })
+      onSaved()
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to update advisor.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="p-6 col-span-1">
+      <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Assigned Advisor</h3>
+
+      {sme.assigned_advisor_name && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
+          <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {sme.assigned_advisor_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{sme.assigned_advisor_name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">SME Advisor</p>
+          </div>
+        </div>
+      )}
+
+      {!sme.assigned_advisor_name && (
+        <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">No advisor assigned yet.</p>
+      )}
+
+      <div className="space-y-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {sme.assigned_advisor_name ? 'Reassign to' : 'Assign advisor'}
+          </label>
+          <select
+            value={advisorId}
+            onChange={e => { setAdvisorId(e.target.value); setMessage(null) }}
+            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+          >
+            <option value="">— Unassigned —</option>
+            {(advisors || []).map(a => (
+              <option key={a.id} value={String(a.id)}>{a.full_name}</option>
+            ))}
+          </select>
+        </div>
+
+        {message && (
+          <p className={`text-xs ${message.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+            {message.text}
+          </p>
+        )}
+
+        <Button
+          onClick={save}
+          loading={saving}
+          disabled={!isDirty}
+          className="w-full text-sm"
+        >
+          Save
+        </Button>
+      </div>
+    </Card>
+  )
+}
+
 export default function SMEDetail() {
   const { id } = useParams()
   const smeId = Number(id)
   const { isLender, isAdmin } = useRole()
   const { t } = useTranslation()
-  const { data: sme, loading } = useApi(() => smesApi.get(smeId), [smeId])
+  const { data: sme, loading, refetch: refetchSme } = useApi(() => smesApi.get(smeId), [smeId])
   const { data: predictions, refetch: refetchPreds } = useApi(() => predictionsApi.list(smeId), [smeId])
   const { data: summary } = useApi(() => transactionsApi.summary(smeId), [smeId])
   const [predicting, setPredicting] = useState(false)
@@ -158,6 +236,7 @@ export default function SMEDetail() {
 
   const latest = predictions?.[0]
   const showEngagement = isLender || isAdmin
+  const extraCards = (showEngagement ? 1 : 0) + (isAdmin ? 1 : 0)
 
   return (
     <AppLayout>
@@ -178,7 +257,7 @@ export default function SMEDetail() {
       </div>
       {predError && <p className="text-sm text-red-500 mb-4 bg-red-50 dark:bg-red-900/20 rounded-lg px-4 py-2">{predError}</p>}
 
-      <div className={`grid grid-cols-1 gap-6 mb-6 ${showEngagement ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+      <div className={`grid grid-cols-1 gap-6 mb-6 lg:grid-cols-${3 + extraCards}`}>
         <Card className="p-6 col-span-1">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">SME Details</h3>
           {[
@@ -241,6 +320,7 @@ export default function SMEDetail() {
         </Card>
 
         {showEngagement && <EngagementPanel smeId={smeId} t={t} />}
+        {isAdmin && <AdvisorPanel sme={sme} onSaved={refetchSme} t={t} />}
       </div>
 
       <div className="flex gap-3">
